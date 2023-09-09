@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chat App</title>
+    <link rel="icon" href="/img/favicon.png">
+    <link rel="stylesheet" href="/css/styles.min.css">
+</head>
+<body>
+    <div class="chat">
+        <div id="usernames" class="chat__sidebar">
+            <
+        </div>
+        <div class="chat__main">
+            
+            
+            <div id="messages" class="chat__messages"></div>
+            
+            <div class="compose">
+                <form id="message-form">
+                    <input id="input" name="message" placeholder="message" type="text" required autocomplete="off" />
+                    <button id="SEND" type="submit">Send</button>
+              
+                </form>
+                <button id="send-location" type="submit">Send Location</button>
+            </div>
+            
+            <!-- <button id="increment">+1</button> -->
+            
+    
+        </div>
+    </div>
+    
+       
+    
+        <script src="/socket.io/socket.io.js"></script>
+        <script id="message-templete" type="text/html">
+          <div class="message">
+            <p>
+                <span class="message__name">{{username}}</span>
+                <span class="message__meta">{{createdAt}}</span>
+            </p>
+            <p> {{message}}</p>
+          </div>
+        </script>
+    
+        <script id="location-templete" type="text/html">
+          <div>
+            <p>
+                <p>
+                    <span class="message__name">{{username}}</span>
+                    <span class="message__meta">{{createdAt}}</span>
+                </p>
+                
+              <a href="{{url}}" target="_blank">  My Current Location!</a>
+            </p>
+          </div>
+        </script>
+        <script id="users-templete" type="text/html">
+            <h2 class="room-title">
+                {{room}}
+                </h2>
+                <h3 class="list-title">
+                    Users
+                </h3>
+                <ul class="users">
+                    {{#users}}
+                    <li>
+                        {{username}}
+                    </li>
+                    {{/users}}
+                </ul>
+            
+        </script>
+
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/qs/6.6.0/qs.min.js"></script>
+
+    
+        <script>
+          const socket = io();
+    
+          //EMELEMTS
+    
+          const $messageForm = document.querySelector("#message-form");
+          const $messageInput = $messageForm.querySelector("input");
+          const $messageButton = $messageForm.querySelector("button");
+          const $messages = document.querySelector("#messages");
+
+          //OPTIONS
+
+          const {username,room} = Qs.parse(location.search, {ignoreQueryPrefix: true})
+    
+          //TEMPLETES
+    
+          const messageTemplete =
+            document.querySelector("#message-templete").innerHTML;
+          const locationTemplete =
+            document.querySelector("#location-templete").innerHTML;
+            const usernameTemplete = document.querySelector('#users-templete').innerHTML
+    
+          //     socket.on('count',(count)=>{
+          //     console.log('Count Is been updated!', count)
+    
+          // })
+          // document.querySelector('#increment').addEventListener('click',()=>{
+          //     console.log('clicked')
+          //     socket.emit('increment')
+          // })
+
+          const autoScroll = ()=>{
+
+            //New Message Element
+            const $newMessage = $messages.lastElementChild
+
+            //Height of new Message
+            const newMessageStyles = getComputedStyle($newMessage)
+            const newMessageMargin = parseInt(newMessageStyles.marginBottom)
+            const newMessageHeight = $newMessage.offsetHeight + newMessageMargin
+
+            // Visible Height 
+            const visibleHeight = $messages.offsetHeight
+
+            //Height of messages container
+            const containerHeight = $messages.scrollHeight
+
+            //How far have  I scrolled?
+            const scrollOffSet = $messages.scrollTop + visibleHeight
+
+            if(containerHeight - newMessageHeight <= scrollOffSet){
+                $messages.scrollTop = $messages.scrollHeight
+            }
+
+          }
+          socket.on("message", (message) => {
+            console.log(message);
+            const html = Mustache.render(messageTemplete, {
+                username: message.username,
+              message: message.text,
+              createdAt: moment(message.createdAt).format('h:mm a' )
+            });
+            $messages.insertAdjacentHTML("beforeend", html);
+            autoScroll()
+          });
+          socket.on("locationMessage", (url) => {
+            console.log(url);
+            const html = Mustache.render(locationTemplete, {
+              username: url.username,
+              url: url.url,
+              createdAt: moment(url.createdAt).format('h:mm a')
+            });
+            $messages.insertAdjacentHTML("beforeend", html);
+            autoScroll()
+          });
+          socket.on('roomData',({room, users})=>{
+            console.log(users)
+            const html = Mustache.render(usernameTemplete, {
+                room,
+                users
+            })
+            document.querySelector('#usernames').innerHTML = html
+          })
+    
+          document
+            .querySelector("#message-form")
+            .addEventListener("submit", (e) => {
+              //const message = e.target.elements.message.value
+              e.preventDefault();
+    
+              $messageButton.setAttribute("disabled", "disabled");
+    
+              const message = document.getElementById("input").value;
+              socket.emit("sendmessage", message, (error) => {
+                $messageButton.removeAttribute("disabled");
+                $messageInput.value = "";
+                $messageInput.focus();
+                if (error) {
+                  return console.error(error);
+                }
+                console.log("Message Delivered");
+              });
+            });
+          const $locationButton = document.querySelector("#send-location");
+    
+          document.querySelector("#send-location").addEventListener("click", () => {
+            if (!navigator.geolocation) {
+              return alert("Geolocation is not supported by your browser");
+            }
+            $locationButton.setAttribute("disabled", "disabled");
+            const position = navigator.geolocation.getCurrentPosition((position) => {
+                socket.emit("sendlocation",{latitude: position.coords.latitude,longitude: position.coords.longitude},
+                  () => {
+                    $locationButton.removeAttribute("disabled", "disabled");
+    
+                    console.log("Location Shared!");
+                  }
+                );
+              }
+            );
+          });
+          socket.emit('join', {username, room},(error)=>{
+            if(error){
+                alert(error)
+                location.href='/'
+            }
+          })
+        </script>
+    
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/mustache.js/3.0.1/mustache.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.22.2/moment.min.js"></script>
+      </body>
+</body>
+</html>
